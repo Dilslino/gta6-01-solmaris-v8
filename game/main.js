@@ -614,6 +614,7 @@ function restoreSnapshot(keepPenalty) {
   player.x = s.x; player.z = s.z; player.y = 0; player.vy = 0; player.heading = s.heading;
   playerGroup.position.set(s.x, 0, s.z);
   if (!keepPenalty) { game.cash = s.cash; document.getElementById('cash').textContent = '$' + s.cash; }
+  else { game.cash = Math.max(0, s.cash - (game.deathPenalty || 0)); document.getElementById('cash').textContent = '$' + game.cash; }
   setHealth(100);
   game.missionIdx = s.missionIdx; game.missionStep = s.missionStep;
   game.crateTaken = s.crateTaken; game.bankCashTaken = s.bankCashTaken;
@@ -630,6 +631,7 @@ function die(kind) {
   AudioSys.setEngine(0, false); AudioSys.setSiren(false); AudioSys.setRotor(false);
   AudioSys.busted();
   const penalty = kind === 'busted' ? 200 : 100;
+  game.deathPenalty = penalty;
   game.cash = Math.max(0, game.cash - penalty);
   document.getElementById('cash').textContent = '$' + game.cash;
   document.getElementById('deadTitle').textContent = kind === 'busted' ? 'BUSTED' : 'WASTED';
@@ -1339,7 +1341,7 @@ window.__SOL = {
     return {
       running: game.running, cash: game.cash, health: player.health,
       wanted: game.wanted, missionIdx: game.missionIdx, missionStep: game.missionStep,
-      x: player.x, z: player.z, inCar: !!player.inCar,
+      x: player.x, z: player.z, y: player.y, inCar: !!player.inCar,
       carHealth: player.inCar ? player.inCar.health : null,
       carSpeed: player.inCar ? player.inCar.speed : null,
       completed: game.completed, dead: player.dead,
