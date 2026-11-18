@@ -120,12 +120,17 @@ const AudioSys = {
   },
 };
 
+// URL params: ?lowfx=1 disables shadows (slow software GL), ?ts=N time scale (test only).
+const Q = new URLSearchParams(location.search);
+let TIME_SCALE = parseFloat(Q.get('ts') || '1') || 1;
+const LOWFX = Q.get('lowfx') === '1';
+
 // ---------------------------------------------------------------- three.js setup
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOWFX });
+renderer.setPixelRatio(LOWFX ? 1 : Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !LOWFX;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1267,7 +1272,7 @@ function drawMinimap() {
 let lastT = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - lastT) / 1000);
+  const dt = Math.min(0.05, (now - lastT) / 1000) * TIME_SCALE;
   lastT = now;
   if (game.running && !player.dead) {
     game.time += dt;
@@ -1349,6 +1354,8 @@ window.__SOL = {
       guardsAlive: game.guards.filter((g) => g.alive).length,
       guardHp: game.guards.map((g) => (g.alive ? Math.round(g.health) : 0)),
       heliSearchlight: !!(game.heli && game.heli.getObjectByName('spot') && game.heli.getObjectByName('cone')),
+      snapCash: game.snapshot ? game.snapshot.cash : null,
+      snapMission: game.snapshot ? game.snapshot.missionIdx : null,
       gunVisible: playerGroup.getObjectByName('gun').visible,
       crateTaken: game.crateTaken, bankCashTaken: game.bankCashTaken,
       audioRunning: AudioSys.ctx ? AudioSys.ctx.state : 'none',
@@ -1389,6 +1396,12 @@ window.__SOL = {
   face(x, z) { player.heading = Math.atan2(x - player.x, z - player.z); cam.yaw = player.heading; },
   damageHeli(n) { damageHeli(n); },
   guardPos(i) { const g = game.guards[i]; return g ? { x: g.x, z: g.z, alive: g.alive } : null; },
+  setTs(n) { TIME_SCALE = n; },
+  setFx(on) {
+    renderer.shadowMap.enabled = !!on;
+    sun.castShadow = !!on;
+    scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+  },
   missionMarker() { return { x: markerGroup.position.x, z: markerGroup.position.z, visible: markerGroup.visible }; },
   heliPos() { return game.heli ? { x: game.heli.position.x, z: game.heli.position.z } : null; },
   carPos() { return player.inCar ? { x: player.inCar.x, z: player.inCar.z, heading: player.inCar.heading } : null; },
