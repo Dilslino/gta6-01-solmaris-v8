@@ -934,7 +934,7 @@ function updatePlayerCar(dt) {
   const steerTarget = (left ? 1 : 0) - (right ? 1 : 0);
   car.steer = lerp(car.steer, steerTarget * (0.55 + 0.45 * speed01), Math.min(1, dt * 9));
   const dir = car.speed >= 0 ? 1 : -1;
-  let turnRate = car.steer * (1.15 + 1.35 * speed01) * dir; // up to ~2.5 rad/s at full speed
+  let turnRate = car.steer * (1.3 + 1.6 * speed01) * dir; // up to ~2.9 rad/s at full speed
   if (handbrake) turnRate *= 1.7;
   car.heading += turnRate * dt * (Math.abs(car.speed) > 0.4 ? 1 : 0);
   const nx = car.x + Math.sin(car.heading) * car.speed * dt;
@@ -1344,7 +1344,7 @@ window.__SOL = {
       x: player.x, z: player.z, y: player.y, inCar: !!player.inCar,
       carHealth: player.inCar ? player.inCar.health : null,
       carSpeed: player.inCar ? player.inCar.speed : null,
-      completed: game.completed, dead: player.dead,
+      completed: game.completed, dead: player.dead, time: game.time,
       heliActive: game.heliActive, heliHealth: game.heliHealth,
       guardsAlive: game.guards.filter((g) => g.alive).length,
       guardHp: game.guards.map((g) => (g.alive ? Math.round(g.health) : 0)),
@@ -1360,9 +1360,14 @@ window.__SOL = {
     };
   },
   start() { startNewGame(false); },
-  teleport(x, z) {
-    if (player.inCar) { player.inCar.x = x; player.inCar.z = z; player.inCar.mesh.group.position.set(x, 0, z); }
+  teleport(x, z, heading) {
+    if (heading !== undefined) {
+      player.heading = heading;
+      if (player.inCar) player.inCar.heading = heading;
+    }
+    if (player.inCar) { player.inCar.x = x; player.inCar.z = z; player.inCar.mesh.group.position.set(x, 0, z); player.inCar.mesh.group.rotation.y = player.inCar.heading; }
     player.x = x; player.z = z; playerGroup.position.set(x, player.y, z);
+    playerGroup.rotation.y = player.heading;
   },
   setMission(i, s) {
     game.missionIdx = i; game.missionStep = s || 0;
