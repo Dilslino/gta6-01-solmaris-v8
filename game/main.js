@@ -602,23 +602,23 @@ function setHealth(n) {
 function takeSnapshot() {
   game.snapshot = {
     x: player.x, z: player.z, heading: player.heading, cash: game.cash,
-    health: 100, wanted: 0, missionIdx: game.missionIdx, missionStep: game.missionStep,
+    health: 100, wanted: game.wanted, missionIdx: game.missionIdx, missionStep: game.missionStep,
     inCar: false, guardsAlive: game.guards.map((g) => g.alive),
     crateTaken: game.crateTaken, bankCashTaken: game.bankCashTaken,
   };
 }
-function restoreSnapshot() {
+function restoreSnapshot(keepPenalty) {
   const s = game.snapshot;
   if (!s) return;
   exitCar(true);
   player.x = s.x; player.z = s.z; player.y = 0; player.vy = 0; player.heading = s.heading;
   playerGroup.position.set(s.x, 0, s.z);
-  game.cash = s.cash; document.getElementById('cash').textContent = '$' + s.cash;
+  if (!keepPenalty) { game.cash = s.cash; document.getElementById('cash').textContent = '$' + s.cash; }
   setHealth(100);
   game.missionIdx = s.missionIdx; game.missionStep = s.missionStep;
   game.crateTaken = s.crateTaken; game.bankCashTaken = s.bankCashTaken;
   game.guards.forEach((g, i) => { g.alive = s.guardsAlive[i] !== false; g.group.visible = g.alive; g.health = 100; });
-  setWanted(0, true);
+  setWanted(s.wanted || 0, true);
   updateMissionHUD(); updateMissionMarker();
   player.dead = false;
   document.getElementById('dead').style.display = 'none';
@@ -655,6 +655,14 @@ function completeMission() {
     saveGame();
     return;
   }
+  // mission-start side effects (exact start state is snapshotted right after)
+  if (game.missionIdx === 2) setWanted(2); // M3: the heat is already on you
+  if (game.missionIdx === 3) { // M4: on foot, short walk — drop the player at the avenue
+    exitCar(true);
+    player.x = 0; player.z = 0; player.heading = Math.PI / 2;
+    playerGroup.position.set(0, 0, 0);
+  }
+  if (game.missionIdx === 4) spawnGuards();
   updateMissionHUD(); updateMissionMarker(); takeSnapshot(); saveGame();
 }
 function updateMissionMarker() {
@@ -669,7 +677,7 @@ function updateMissionMarker() {
 }
 function restartMission() {
   if (!game.snapshot) return;
-  restoreSnapshot();
+  restoreSnapshot(false);
   showMsg('Mission restarted from its start point.', 2.5);
 }
 function saveGame() {
@@ -833,7 +841,7 @@ function tryInteract() {
   if (car) { enterCar(car); return; }
   // mission interactions
   if (game.missionIdx === 5 && game.missionStep === 0 &&
-    dist2d(player.x, player.z, BANK.x, BANK.z) < 12) {
+    dist2d(player.x, player.z, BANK.x, BANK.z) < 18) {
     game.bankCashTaken = true; game.missionStep = 1;
     addCash(0); AudioSys.pickup();
     showMsg('Cash grabbed! Now escape to the NORTH DROP-OFF — WANTED 3!', 3.5);
@@ -1162,7 +1170,7 @@ function missionTick(dt) {
       game.missionStep = 1; AudioSys.pickup();
       showMsg('Package picked up! Deliver it to the PARKING GARAGE (175, -105).', 3.5);
       updateMissionMarker();
-    } else if (s === 1 && at(PARKING_GARAGE.x, PARKING_GARAGE.z, 14)) completeMission();
+    } else if (s === 1 && at(PARKING_GARAGE.x, PARKING_GARAGE.z, 22)) completeMission();
   } else if (i === 2) {
     if (at(SAFEHOUSE.x, SAFEHOUSE.z, 10)) {
       setWanted(0, true);
@@ -1317,7 +1325,7 @@ document.getElementById('newGameBtn').addEventListener('click', () => startNewGa
 document.getElementById('continueBtn').addEventListener('click', () => startNewGame(true));
 document.getElementById('continueDeadBtn').addEventListener('click', () => {
   AudioSys.click();
-  if (game.snapshot) { restoreSnapshot(); showMsg('Back on your feet. The mission continues.', 3); }
+  if (game.snapshot) { restoreSnapshot(true); showMsg('Back on your feet. The mission continues.', 3); }
   else startNewGame(false);
 });
 if (loadSave()) document.getElementById('continueBtn').style.display = 'inline-block';
@@ -1337,6 +1345,9 @@ window.__SOL = {
       completed: game.completed, dead: player.dead,
       heliActive: game.heliActive, heliHealth: game.heliHealth,
       guardsAlive: game.guards.filter((g) => g.alive).length,
+      guardHp: game.guards.map((g) => (g.alive ? Math.round(g.health) : 0)),
+      heliSearchlight: !!(game.heli && game.heli.getObjectByName('spot') && game.heli.getObjectByName('cone')),
+      gunVisible: playerGroup.getObjectByName('gun').visible,
       crateTaken: game.crateTaken, bankCashTaken: game.bankCashTaken,
       audioRunning: AudioSys.ctx ? AudioSys.ctx.state : 'none',
       masterGain: AudioSys.master ? AudioSys.master.gain.value : 0,
@@ -1351,7 +1362,13 @@ window.__SOL = {
     if (player.inCar) { player.inCar.x = x; player.inCar.z = z; player.inCar.mesh.group.position.set(x, 0, z); }
     player.x = x; player.z = z; playerGroup.position.set(x, player.y, z);
   },
-  setMission(i, s) { game.missionIdx = i; game.missionStep = s || 0; updateMissionHUD(); updateMissionMarker(); takeSnapshot(); if (i === 4) spawnGuards(); },
+  setMission(i, s) {
+    game.missionIdx = i; game.missionStep = s || 0;
+    if (i === 2) setWanted(2);
+    if (i === 3) { exitCar(true); player.x = 0; player.z = 0; player.heading = Math.PI / 2; playerGroup.position.set(0, 0, 0); }
+    if (i === 4) spawnGuards();
+    updateMissionHUD(); updateMissionMarker(); takeSnapshot();
+  },
   setWanted(n) { setWanted(n); },
   damage(n) { setHealth(player.health - n); if (player.health <= 0) die('wasted'); },
   bust() { die('busted'); },
@@ -1362,6 +1379,9 @@ window.__SOL = {
   shoot() { shoot(); },
   melee() { melee(); },
   pressKey(code, down) { keys[code] = !!down; },
+  face(x, z) { player.heading = Math.atan2(x - player.x, z - player.z); cam.yaw = player.heading; },
+  damageHeli(n) { damageHeli(n); },
+  guardPos(i) { const g = game.guards[i]; return g ? { x: g.x, z: g.z, alive: g.alive } : null; },
   missionMarker() { return { x: markerGroup.position.x, z: markerGroup.position.z, visible: markerGroup.visible }; },
   heliPos() { return game.heli ? { x: game.heli.position.x, z: game.heli.position.z } : null; },
   carPos() { return player.inCar ? { x: player.inCar.x, z: player.inCar.z, heading: player.inCar.heading } : null; },
