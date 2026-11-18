@@ -506,10 +506,13 @@ const playerGroup = new THREE.Group();
 }
 // camera orbit state
 const cam = { yaw: Math.PI, pitch: 0.32, dist: 9, targetYaw: Math.PI };
+// aim elevation (radians, 0 = level, up to ~77 deg up) — drag vertically while aiming
+let aimElev = 0;
 
 // ---------------------------------------------------------------- input
 const keys = {};
 let mouseDownL = false, mouseDownR = false, dragging = false, lastMX = 0, lastMY = 0;
+let aimOverride = false; // set only via the __SOL.aim test hook
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'KeyM') AudioSys.setMuted(!AudioSys.muted);
@@ -531,7 +534,8 @@ window.addEventListener('mouseup', (e) => {
 window.addEventListener('mousemove', (e) => {
   if (!dragging) return;
   cam.yaw -= (e.clientX - lastMX) * 0.005;
-  cam.pitch = clamp(cam.pitch + (e.clientY - lastMY) * 0.004, 0.05, 1.1);
+  if (mouseDownR) aimElev = clamp(aimElev - (e.clientY - lastMY) * 0.004, -0.1, 1.35);
+  else cam.pitch = clamp(cam.pitch + (e.clientY - lastMY) * 0.004, 0.05, 1.1);
   lastMX = e.clientX; lastMY = e.clientY;
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1045,7 +1049,7 @@ function updateHeli(dt) {
   // hover above the player, slight lag + bob
   const hx = lerp(g.position.x, player.x + Math.sin(t * 0.5) * 6, dt * 0.9);
   const hz = lerp(g.position.z, player.z + Math.cos(t * 0.4) * 6, dt * 0.9);
-  g.position.set(hx, 42 + Math.sin(t * 1.3) * 1.5, hz);
+  g.position.set(hx, 30 + Math.sin(t * 1.3) * 1.5, hz);
   g.rotation.y = Math.atan2(player.x - hx, player.z - hz);
   const rotor = g.getObjectByName('rotor');
   if (rotor) rotor.rotation.y += dt * 22;
@@ -1056,7 +1060,7 @@ function updateHeli(dt) {
   const cone = g.getObjectByName('cone');
   const pool = g.userData.pool;
   const px = player.x, pz = player.z;
-  spot.target.position.set(px - hx, -42, pz - hz);
+  spot.target.position.set(px - hx, -30, pz - hz);
   spot.target.updateMatrixWorld();
   cone.lookAt(px, 0, pz);
   cone.rotateX(-Math.PI / 2);
@@ -1153,7 +1157,7 @@ function updatePlayer(dt) {
   playerGroup.position.set(player.x, player.y + Math.abs(Math.sin(player.walkPhase)) * 0.05, player.z);
   playerGroup.rotation.y = player.heading;
   // aim / shoot / melee
-  player.aiming = mouseDownR;
+  player.aiming = mouseDownR || aimOverride;
   playerGroup.getObjectByName('gun').visible = player.aiming;
   document.getElementById('crosshair').style.display = player.aiming ? 'block' : 'none';
   if (mouseDownL && player.aiming) shoot();
@@ -1206,29 +1210,34 @@ function missionTick(dt) {
 // ---------------------------------------------------------------- camera + minimap + HUD
 function updateCamera(dt) {
   const px = player.x, pz = player.z;
-  let tx, ty, tz, lookY;
+  let tx, ty, tz, lookX, lookY, lookZ;
   if (player.inCar) {
     const car = player.inCar;
     const back = 11 + Math.abs(car.speed) * 0.08;
     tx = car.x - Math.sin(car.heading) * back;
     tz = car.z - Math.cos(car.heading) * back;
     ty = 5.2 + Math.abs(car.speed) * 0.03;
-    lookY = 1.6;
+    lookX = px; lookY = 1.6; lookZ = pz;
     cam.yaw = lerp(cam.yaw, car.heading, Math.min(1, dt * 1.2));
   } else if (player.aiming) {
+    // over-shoulder aim: ray leaves level at torso height, elevation via aimElev
+    const ce = Math.cos(aimElev), se = Math.sin(aimElev);
     tx = px - Math.sin(player.heading) * 3.4;
     tz = pz - Math.cos(player.heading) * 3.4;
-    ty = 2.4; lookY = 1.5;
+    ty = 1.9;
+    lookX = tx + Math.sin(player.heading) * ce * 10;
+    lookY = ty + se * 10;
+    lookZ = tz + Math.cos(player.heading) * ce * 10;
   } else {
     tx = px - Math.sin(cam.yaw) * cam.dist;
     tz = pz - Math.cos(cam.yaw) * cam.dist;
     ty = 4 + cam.pitch * 7;
-    lookY = 1.6;
+    lookX = px; lookY = 1.6; lookZ = pz;
   }
   camera.position.x = lerp(camera.position.x, tx, Math.min(1, dt * 7));
   camera.position.y = lerp(camera.position.y, ty, Math.min(1, dt * 7));
   camera.position.z = lerp(camera.position.z, tz, Math.min(1, dt * 7));
-  camera.lookAt(px, lookY, pz);
+  camera.lookAt(lookX, lookY, lookZ);
 }
 const mm = document.getElementById('minimap').getContext('2d');
 function drawMinimap() {
@@ -1390,10 +1399,11 @@ window.__SOL = {
   setCash(n) { game.cash = n; document.getElementById('cash').textContent = '$' + n; },
   enterNearestCar() { const c = nearestCar(30); if (c) enterCar(c); return !!player.inCar; },
   exitCar() { exitCar(); },
-  aim(v) { player.aiming = !!v; document.getElementById('crosshair').style.display = v ? 'block' : 'none'; },
+  aim(v) { aimOverride = !!v; player.aiming = !!v; document.getElementById('crosshair').style.display = v ? 'block' : 'none'; },
   shoot() { shoot(); },
   melee() { melee(); },
   pressKey(code, down) { keys[code] = !!down; },
+  setAimElev(v) { aimElev = clamp(v, -0.1, 1.35); },
   face(x, z) { player.heading = Math.atan2(x - player.x, z - player.z); cam.yaw = player.heading; },
   damageHeli(n) { damageHeli(n); },
   guardPos(i) { const g = game.guards[i]; return g ? { x: g.x, z: g.z, alive: g.alive } : null; },
