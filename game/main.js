@@ -667,6 +667,7 @@ function completeMission() {
   if (game.missionIdx === 3) { // M4: on foot, short walk — drop the player at the avenue
     exitCar(true);
     player.x = 0; player.z = 0; player.heading = Math.PI / 2;
+    cam.yaw = Math.PI / 2; // camera behind the player, facing the store marker
     playerGroup.position.set(0, 0, 0);
   }
   if (game.missionIdx === 4) spawnGuards();
@@ -1346,7 +1347,7 @@ window.__SOL = {
     return {
       running: game.running, cash: game.cash, health: player.health,
       wanted: game.wanted, missionIdx: game.missionIdx, missionStep: game.missionStep,
-      x: player.x, z: player.z, y: player.y, inCar: !!player.inCar,
+      x: player.x, z: player.z, y: player.y, camYaw: cam.yaw, inCar: !!player.inCar,
       carHealth: player.inCar ? player.inCar.health : null,
       carSpeed: player.inCar ? player.inCar.speed : null,
       completed: game.completed, dead: player.dead, time: game.time,
@@ -1379,7 +1380,7 @@ window.__SOL = {
   setMission(i, s) {
     game.missionIdx = i; game.missionStep = s || 0;
     if (i === 2) setWanted(2);
-    if (i === 3) { exitCar(true); player.x = 0; player.z = 0; player.heading = Math.PI / 2; playerGroup.position.set(0, 0, 0); }
+    if (i === 3) { exitCar(true); player.x = 0; player.z = 0; player.heading = Math.PI / 2; cam.yaw = Math.PI / 2; playerGroup.position.set(0, 0, 0); }
     if (i === 4) spawnGuards();
     updateMissionHUD(); updateMissionMarker(); takeSnapshot();
   },
